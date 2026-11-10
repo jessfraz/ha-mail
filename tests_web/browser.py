@@ -122,7 +122,7 @@ def exercise(page: Page, origin: str, *, native: bool) -> None:
     expect(page.get_by_role("heading", name="Mailbox", exact=True)).to_be_visible()
     page.set_viewport_size({"width": 375, "height": 812})
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
-    expect(page.locator("#app-version")).to_have_text("0.1.1")
+    expect(page.locator("#app-version")).to_have_text("0.1.2")
     page.route(
         "**/v1/items?**", lambda route: route.fulfill(status=503, body="unavailable")
     )

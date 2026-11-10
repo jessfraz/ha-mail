@@ -10,3 +10,4 @@ __pycache__/
 options.json
 credentials.json
 /result
+/custom_components/ha_mail/_app_kit/

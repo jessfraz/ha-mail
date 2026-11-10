@@ -1,8 +1,23 @@
 """Assertions cross the actual Core HTTP bridge and Rust service."""
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant.common import MockConfigEntry
 from pytest_homeassistant.typing import ClientSessionGenerator
+
+from custom_components.ha_mail._app_kit.version import LOADED_VERSION
+from custom_components.ha_mail.const import DOMAIN
+from custom_components.ha_mail.repairs import VERSION_REPAIR
+
+
+async def test_real_backend_version_matches_loaded_companion(
+    hass: HomeAssistant, entry: MockConfigEntry
+) -> None:
+    assert str(await VERSION_REPAIR.probe(hass, entry)) == LOADED_VERSION
+    assert (
+        ir.async_get(hass).async_get_issue(DOMAIN, f"{entry.entry_id}_version_mismatch")
+        is None
+    )
 
 
 async def test_admin_can_read_mail_through_real_bridge(

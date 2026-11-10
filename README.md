@@ -52,9 +52,9 @@ cargo run --bin mail
 The native listener binds to loopback by default. `MAIL_ENVIRONMENT=sandbox`
 uses Stable's separate sandbox. Never use production mail as test fixtures.
 
-The checks in `.github/workflows/ci.yml` run inside the development shell.
-Rust owns storage and API types; the Python integration only connects the
-service to Home Assistant. API docs are served at `/openapi.json`.
+Run `uv run --frozen python scripts/build-integration` before the Home Assistant
+tests. Add `--output dist` to build the Marketplace ZIP from indexed source.
+Rust owns storage and API types. API docs are served at `/openapi.json`.
 
 ## Backups
 
