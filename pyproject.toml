@@ -9,10 +9,10 @@ dependencies = []
 [dependency-groups]
 dev = [
   "pytest-homeassistant==2026.11.0",
-  "aiohasupervisor==0.8.1",
+  "aiohasupervisor==0.10.0",
   "playwright==1.64.1",
-  "ruff==0.17.3",
-  "ty==0.0.95",
+  "ruff==0.17.4",
+  "ty==0.0.99",
   "pyyaml==6.0.3",
 ]
 
