@@ -3,16 +3,18 @@
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
 from .client import MailClient
-from .const import CONF_BACKEND_URL, CONF_TOKEN
+from .const import CONF_BACKEND_URL, CONF_TOKEN, DOMAIN
 from .coordinator import MailCoordinator
 from .http import MailView
 
 PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 type MailConfigEntry = ConfigEntry[MailCoordinator]
 
 

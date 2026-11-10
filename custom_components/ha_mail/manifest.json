@@ -1,6 +1,7 @@
 {
   "domain": "ha_mail",
   "name": "Mail",
+  "after_dependencies": ["hassio"],
   "codeowners": ["@jessfraz"],
   "config_flow": true,
   "dependencies": ["http"],
