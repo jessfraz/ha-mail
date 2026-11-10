@@ -1,3 +1,7 @@
+# 0.1.1
+
+- Fix select spacing and let Dependabot track App Kit releases.
+
 # 0.1.0
 
 Initial release: location-bound mail ingestion, envelope images, scan PDFs,
