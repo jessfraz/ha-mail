@@ -1,0 +1,73 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  rust:
+    name: Rust
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all --benches --tests --examples --all-features -- -D warnings
+      - run: cargo test --locked --all-features
+  home-assistant:
+    name: Home Assistant
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2
+        with:
+          python-version: "3.14"
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run --frozen ruff check custom_components tests_ha tests_web
+      - run: uv run --frozen ruff format --check custom_components tests_ha tests_web
+      - run: uv run --frozen ty check --error-on-warning custom_components tests_ha tests_web
+      - run: MAIL_TEST_PYTHON="$PWD/.venv/bin/python" cargo test --locked --test ha_bridge -- --ignored
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2
+        with:
+          python-version: "3.14"
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run --frozen playwright install --with-deps chromium
+      - run: node --check web/app.js
+      - run: MAIL_BROWSER_PYTHON="$PWD/.venv/bin/python" cargo test --locked --test browser -- --ignored
+  repository:
+    name: Repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b
+      - run: >-
+          nix develop --command bash -c 'uv sync --frozen &&
+          uv run --frozen python scripts/check-public-tree &&
+          actionlint && shellcheck docker-entrypoint.sh scripts/container-smoke.sh &&
+          uv run --frozen python scripts/check-release-version'

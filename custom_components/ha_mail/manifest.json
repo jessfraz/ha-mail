@@ -1,0 +1,13 @@
+{
+  "domain": "ha_mail",
+  "name": "Mail",
+  "codeowners": ["@jessfraz"],
+  "config_flow": true,
+  "dependencies": ["http"],
+  "documentation": "https://github.com/jessfraz/ha-mail",
+  "integration_type": "service",
+  "iot_class": "local_polling",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.1.0"
+}

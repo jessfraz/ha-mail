@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+"""Reject credentials and private runtime artifacts before publication.
+
+Reports paths and categories only. This complements review; it cannot recognize
+every household detail in prose or images.
+"""
+
+from __future__ import annotations
+
+import re
+import subprocess
+from pathlib import Path
+
+EXCLUDED = {
+    ".git",
+    ".venv",
+    "target",
+    "__pycache__",
+    ".pytest_cache",
+    ".ruff_cache",
+    "work",
+}
+FORBIDDEN_NAMES = {
+    "credentials.json",
+    "options.json",
+    ".env",
+    "secrets.yaml",
+    "secrets.yml",
+}
+FORBIDDEN_SUFFIXES = {
+    ".db",
+    ".sqlite",
+    ".sqlite3",
+    ".pdf",
+    ".har",
+    ".pem",
+    ".key",
+    ".pcap",
+}
+PATTERNS = {
+    "private key": re.compile(rb"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
+    "provider credential": re.compile(
+        rb"(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|sk-(?:proj-|ant-)?[A-Za-z0-9_-]{24,}|AKIA[0-9A-Z]{16}|xox[baprs]-[0-9A-Za-z-]{20,})"
+    ),
+    "Home Assistant credential": re.compile(
+        rb"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}"
+    ),
+    "signed asset URL": re.compile(
+        rb"https?://[^\s\"']+[?&](?:X-Amz-Signature|X-Amz-Credential|Signature|AWSAccessKeyId)=[^\s\"']+",
+        re.IGNORECASE,
+    ),
+}
+
+
+def git(*args: str) -> bytes:
+    return subprocess.check_output(["git", *args])
+
+
+def inspect(name: str, data: bytes) -> list[str]:
+    path = Path(name)
+    findings = []
+    if (
+        path.name in FORBIDDEN_NAMES
+        or path.suffix.lower() in FORBIDDEN_SUFFIXES
+        or ".sqlite3-" in path.name
+    ):
+        findings.append(f"{name}: private runtime artifact")
+    findings.extend(
+        f"{name}: {category}"
+        for category, pattern in PATTERNS.items()
+        if pattern.search(data)
+    )
+    return findings
+
+
+def main() -> None:
+    findings: list[str] = []
+    tracked = set(git("ls-files", "-z").decode().split("\0")) - {""}
+    untracked = set(
+        git("ls-files", "--others", "--exclude-standard", "-z").decode().split("\0")
+    ) - {""}
+    for name in sorted(tracked | untracked):
+        path = Path(name)
+        if name not in tracked and any(part in EXCLUDED for part in path.parts):
+            continue
+        if path.is_symlink():
+            findings.append(f"{name}: unexpected source symlink")
+        elif path.is_file():
+            findings.extend(inspect(name, path.read_bytes()))
+    # A staged blob can differ from the working file. Inspect the bytes Git
+    # would actually commit, not just the visible checkout.
+    for name in sorted(tracked):
+        findings.extend(inspect(name, git("show", f":{name}")))
+    objects = git("rev-list", "--objects", "--all").decode().splitlines()
+    for entry in objects:
+        oid, _, name = entry.partition(" ")
+        if git("cat-file", "-t", oid).strip() == b"blob":
+            findings.extend(inspect(name, git("cat-file", "blob", oid)))
+    if findings:
+        raise SystemExit("\n".join(sorted(set(findings))))
+    print("No private runtime artifacts or credential patterns found")
+
+
+if __name__ == "__main__":
+    main()

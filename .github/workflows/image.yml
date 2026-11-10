@@ -1,0 +1,115 @@
+name: Container
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+jobs:
+  build:
+    name: Build and test (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302
+        id: metadata
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+          flavor: latest=false
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          load: true
+          tags: ha-mail:smoke
+          labels: ${{ steps.metadata.outputs.labels }}
+          cache-from: type=gha,scope=mail-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=mail-${{ matrix.arch }}
+      - name: Verify source labels and release version
+        env:
+          EXPECTED_VERSION: ${{ steps.metadata.outputs.version }}
+        run: |
+          docker image inspect ha-mail:smoke --format '{{json .Config.Labels}}' |
+            jq -e --arg revision "$GITHUB_SHA" --arg version "$EXPECTED_VERSION" \
+              --arg source "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" '
+                .["org.opencontainers.image.revision"] == $revision
+                and .["org.opencontainers.image.source"] == $source
+                and ($version == "" or .["org.opencontainers.image.version"] == $version)
+              '
+          scripts/container-smoke.sh ha-mail:smoke "$EXPECTED_VERSION"
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push tested image
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          tag="$IMAGE:build-$GITHUB_SHA-$ARCH"
+          docker tag ha-mail:smoke "$tag"
+          docker push "$tag"
+          mkdir -p "$RUNNER_TEMP/digests"
+          docker image inspect "$tag" --format '{{index .RepoDigests 0}}' > "$RUNNER_TEMP/digests/$ARCH"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          name: digests-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+  publish:
+    name: Publish tested architectures
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          pattern: digests-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish both tested digests
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          test -s "$RUNNER_TEMP/digests/amd64"
+          test -s "$RUNNER_TEMP/digests/arm64"
+          docker buildx imagetools create --tag "$IMAGE:${TAG#v}" \
+            "$(cat "$RUNNER_TEMP/digests/amd64")" "$(cat "$RUNNER_TEMP/digests/arm64")"
+          docker buildx imagetools inspect "$IMAGE:${TAG#v}" --raw |
+            jq -e '[.manifests[].platform | select(.os == "linux") | .architecture] | sort == ["amd64", "arm64"]'

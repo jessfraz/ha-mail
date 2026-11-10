@@ -1,0 +1,70 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  public:
+  schedule:
+    - cron: "31 8 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-dependencies:
+    name: Python dependencies
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2
+        with:
+          python-version: "3.14"
+      - run: uv audit --locked --python-version 3.14 --python-platform linux
+  dependencies:
+    name: Rust dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup show active-toolchain
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: cargo-deny-0.20.2
+      - name: Install cargo-deny from crates.io
+        run: cargo install --locked cargo-deny --version 0.20.2
+      - run: cargo deny --all-features check advisories licenses sources
+
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    # Code scanning is unavailable for private personal repositories.
+    if: github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [rust, python, actions]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
+        with:
+          category: /language:${{ matrix.language }}

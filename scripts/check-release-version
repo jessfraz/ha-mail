@@ -1,0 +1,27 @@
+#!/usr/bin/env python3
+"""Validate the version contract before packaging a release."""
+
+import json
+import sys
+import tomllib
+from pathlib import Path
+
+import yaml
+
+root = Path(__file__).resolve().parents[1]
+version = tomllib.loads((root / "Cargo.toml").read_text())["package"]["version"]
+versions = {
+    "python": tomllib.loads((root / "pyproject.toml").read_text())["project"][
+        "version"
+    ],
+    "integration": json.loads(
+        (root / "custom_components/ha_mail/manifest.json").read_text()
+    )["version"],
+    "app": yaml.safe_load((root / "mail/config.yaml").read_text())["version"],
+    "openapi": json.loads((root / "openapi/api.json").read_text())["info"]["version"],
+}
+if len(sys.argv) > 1:
+    versions["tag"] = sys.argv[1].removeprefix("v")
+if any(value != version for value in versions.values()):
+    raise SystemExit("Release versions disagree")
+print(f"Release versions agree: {version}")

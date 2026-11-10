@@ -1,0 +1,12 @@
+/target/
+/.venv/
+/integration/.venv/
+/.pytest_cache/
+/.ruff_cache/
+/work/
+*.sqlite3*
+__pycache__/
+*.pyc
+options.json
+credentials.json
+/result
