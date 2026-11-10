@@ -12,6 +12,7 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from ._app_kit.version import LOADED_VERSION
 from .client import MailClient, ResponseTooLarge
 from .const import DOMAIN
 from .models import MailStatus
@@ -21,7 +22,7 @@ class MailCoordinator(DataUpdateCoordinator[MailStatus]):
     """Do not expose senders, summaries, documents, or credentials in entities."""
 
     def __init__(
-        self, hass: HomeAssistant, entry: ConfigEntry, client: MailClient, version: str
+        self, hass: HomeAssistant, entry: ConfigEntry, client: MailClient
     ) -> None:
         super().__init__(
             hass,
@@ -30,7 +31,6 @@ class MailCoordinator(DataUpdateCoordinator[MailStatus]):
             config_entry=entry,
             update_interval=timedelta(seconds=30),
         )
-        self.version = version
         self.client = client
         self.entry = entry
         self._offset_store = Store[dict[str, int]](
@@ -66,7 +66,7 @@ class MailCoordinator(DataUpdateCoordinator[MailStatus]):
                 "/v1/integration/presence",
                 body=json.dumps(
                     {
-                        "version": self.version,
+                        "version": LOADED_VERSION,
                         "backup": {"status": "unavailable", "last_backup": None},
                     }
                 ).encode(),
