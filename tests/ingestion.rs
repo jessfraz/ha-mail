@@ -8,6 +8,85 @@ use ha_mail::{
 use support::{Fixture, item};
 
 #[tokio::test]
+async fn automatic_sync_waits_for_a_location_then_repeats_without_a_manual_request() {
+    use std::time::Duration;
+
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::open(
+        &directory.path().join("mail.sqlite3"),
+        Environment::Sandbox,
+        None,
+    )
+    .await
+    .unwrap();
+    let fixture = Fixture::new(vec![item("mail-a", "location-a", Some("processing"))]);
+    let stable = Stable::with_origin("fixture-key", &fixture.origin).unwrap();
+    let (stop, stopped) = tokio::sync::watch::channel(false);
+    let task = tokio::spawn(worker(store.clone(), stable, 300, stopped));
+
+    tokio::time::sleep(Duration::from_millis(2200)).await;
+    assert!(fixture.requests.lock().unwrap().is_empty());
+    store
+        .bind(Environment::Sandbox, "location-a")
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(4), async {
+        while !store.sync_status().await.unwrap().initial_sync_complete {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(store.summary().await.unwrap().total, 1);
+    assert_eq!(fixture.requests.lock().unwrap().len(), 2);
+    let first_success = store.sync_status().await.unwrap().last_success_at;
+
+    *fixture.items.lock().unwrap() = vec![
+        item("mail-a", "location-a", Some("completed")),
+        item("mail-b", "location-a", None),
+    ];
+
+    // Advance only while no provider request is in flight. Real HTTP/SQLite
+    // work resumes on the ordinary clock, so fixture I/O cannot lose a race
+    // against an automatically advanced request timeout.
+    tokio::time::pause();
+    tokio::time::advance(Duration::from_secs(270)).await;
+    tokio::time::resume();
+    tokio::time::sleep(Duration::from_millis(2200)).await;
+    assert_eq!(fixture.requests.lock().unwrap().len(), 2);
+
+    tokio::time::pause();
+    tokio::time::advance(Duration::from_secs(40)).await;
+    tokio::time::resume();
+    tokio::time::timeout(Duration::from_secs(4), async {
+        while store.sync_status().await.unwrap().last_success_at == first_success {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(fixture.requests.lock().unwrap().len(), 4);
+    assert_eq!(store.summary().await.unwrap().total, 2);
+    assert_eq!(store.summary().await.unwrap().ready_scans, 1);
+    assert_eq!(
+        store.binding().await.unwrap().unwrap().location_id,
+        "location-a"
+    );
+    assert!(
+        fixture
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|request| request.starts_with("GET ")
+                && request.contains("locationId=location-a"))
+    );
+    stop.send(true).unwrap();
+    task.await.unwrap().unwrap();
+    store.close().await.unwrap();
+}
+
+#[tokio::test]
 async fn provider_sqlite_restart_and_late_scan_updates_preserve_binding_and_events() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("mail.sqlite3");
