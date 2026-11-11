@@ -1,3 +1,7 @@
+# 0.1.4
+
+- Keep version Repairs actionable when native update checks need a retry.
+
 # 0.1.3
 
 - Match the sidebar icon in Settings Apps and Marketplace.

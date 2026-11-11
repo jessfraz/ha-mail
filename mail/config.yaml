@@ -1,5 +1,5 @@
 name: Mail
-version: "0.1.3"
+version: "0.1.4"
 slug: mail
 description: Physical mail, envelope images, scans, and storage deadlines
 url: https://github.com/jessfraz/ha-mail
