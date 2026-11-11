@@ -1,3 +1,8 @@
+# 0.1.5
+
+Keep version Repairs actionable when the first data refresh fails, using a fresh
+entry-scoped version check without requiring a loaded coordinator.
+
 # 0.1.4
 
 - Keep version Repairs actionable when native update checks need a retry.
