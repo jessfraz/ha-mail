@@ -1,3 +1,7 @@
+# 0.1.3
+
+- Match the sidebar icon in Settings Apps and Marketplace.
+
 # 0.1.2
 
 - Add a Home Assistant repair for mismatched Mail app and integration versions.
