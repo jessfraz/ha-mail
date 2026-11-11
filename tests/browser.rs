@@ -46,6 +46,7 @@ async fn browser_exercises_real_mail_dashboard_and_ingress_paths() {
         std::process::Command::new(python)
             .arg("tests_web/browser.py")
             .args(args)
+            .arg(env!("CARGO_PKG_VERSION"))
             .output()
             .unwrap()
     })
