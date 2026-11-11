@@ -1,6 +1,6 @@
 mod support;
 use ha_mail::{
-    models::{Environment, ListQuery, OperationState},
+    models::{Environment, ListQuery, MailItem, OperationState},
     stable::Stable,
     store::Store,
     sync::{sweep, worker},
@@ -35,9 +35,14 @@ async fn provider_sqlite_restart_and_late_scan_updates_preserve_binding_and_even
         ha_mail::models::EventKind::ScanReady
     );
     sweep(&store, &stable).await.unwrap();
+    let latest = store.item("mail-a").await.unwrap();
+    // A repeated observation can advance the timestamp while the item stays unchanged.
     assert_eq!(
-        store.item("mail-a").await.unwrap().revision,
-        second.revision
+        latest,
+        MailItem {
+            observed_at: latest.observed_at,
+            ..second
+        }
     );
     assert_eq!(store.events(0, None).await.unwrap().items.len(), 1);
     store.close().await.unwrap();
@@ -45,7 +50,7 @@ async fn provider_sqlite_restart_and_late_scan_updates_preserve_binding_and_even
         .await
         .unwrap();
     assert_eq!(reopened.binding().await.unwrap().unwrap(), binding);
-    assert_eq!(reopened.item("mail-a").await.unwrap(), second);
+    assert_eq!(reopened.item("mail-a").await.unwrap(), latest);
     reopened.close().await.unwrap();
     assert!(
         Store::open(&path, Environment::Sandbox, Some("location-b"))
