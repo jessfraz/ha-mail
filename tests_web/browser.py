@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 from playwright.sync_api import Page, Route, expect, sync_playwright
 
 
-def exercise(page: Page, origin: str, *, native: bool) -> None:
+def exercise(page: Page, origin: str, *, native: bool, version: str) -> None:
     page.goto(origin)
     if native:
         expect(page.get_by_role("heading", name="Connect", exact=True)).to_be_visible()
@@ -122,7 +122,7 @@ def exercise(page: Page, origin: str, *, native: bool) -> None:
     expect(page.get_by_role("heading", name="Mailbox", exact=True)).to_be_visible()
     page.set_viewport_size({"width": 375, "height": 812})
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
-    expect(page.locator("#app-version")).to_have_text("0.1.2")
+    expect(page.locator("#app-version")).to_have_text(version)
     page.route(
         "**/v1/items?**", lambda route: route.fulfill(status=503, body="unavailable")
     )
@@ -141,7 +141,7 @@ def exercise(page: Page, origin: str, *, native: bool) -> None:
 
 
 def main() -> None:
-    native, ingress = sys.argv[1:3]
+    native, ingress, version = sys.argv[1:]
     upstream = urlsplit(ingress)
     hostname = upstream.hostname
     assert hostname is not None
@@ -188,11 +188,12 @@ def main() -> None:
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch()
             try:
-                exercise(browser.new_page(), native, native=True)
+                exercise(browser.new_page(), native, native=True, version=version)
                 exercise(
                     browser.new_page(),
                     f"http://127.0.0.1:{proxy.server_port}{prefix}/",
                     native=False,
+                    version=version,
                 )
             finally:
                 browser.close()
