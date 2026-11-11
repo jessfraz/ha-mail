@@ -3,15 +3,17 @@
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
 
+from ._app_kit.repairs import async_check_startup_version
 from .client import MailClient
 from .const import CONF_BACKEND_URL, CONF_TOKEN, DOMAIN
 from .coordinator import MailCoordinator
 from .http import MailView
-from .repairs import VersionChecks
+from .repairs import VERSION_REPAIR, VersionChecks
 
 PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -32,7 +34,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: MailConfigEntry) -> bool
         entry.data[CONF_TOKEN],
     )
     coordinator = MailCoordinator(hass, entry, client)
-    await coordinator.async_config_entry_first_refresh()
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except ConfigEntryNotReady:
+        await async_check_startup_version(hass, entry, VERSION_REPAIR)
+        raise
     entry.runtime_data = coordinator
     VersionChecks(hass, entry).async_start()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
