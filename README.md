@@ -13,6 +13,10 @@ Stable API key in the app options. Open the dashboard and choose the location
 for this deployment. A shared Stable credential is fine; each database is
 bound to one location and environment.
 
+Sync starts automatically once the key and location are ready, then repeats
+every five minutes. Change `poll_seconds` in the app options to use another
+interval. Sync continues when the dashboard is closed.
+
 Install the companion integration from this repository through Marketplace or
 HACS, then add **Mail** in Devices & services. Supervisor discovery pairs it
 without copying tokens. The integration exposes counts and sync health, not

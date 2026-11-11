@@ -1,3 +1,9 @@
+# 0.1.6
+
+Follow background mailbox sync without extra provider requests. Keep first-sync
+and location setup states current, show overdue mail in storage, and use the
+shared app styling and canonical mailbox icon.
+
 # 0.1.5
 
 Keep version Repairs actionable when the first data refresh fails, using a fresh
