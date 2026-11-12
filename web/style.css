@@ -1,27 +1,28 @@
 button[aria-busy="true"] { cursor: wait; }
-input, select { width: 100%; }
+input:where(:not([type="checkbox"]):not([type="radio"])), select { min-width: 0; width: 100%; }
 form > button { margin-top: 16px; }
 h1 { font-size: clamp(27px, 4vw, 36px); font-weight: 600; letter-spacing: -.035em; }
 h2 { font-size: 20px; font-weight: 600; }
 p { line-height: 1.6; }
-.page-heading { align-items: flex-start; margin-bottom: 24px; }
+.page-heading { align-items: center; flex-wrap: wrap; margin-bottom: var(--space-6); }
+.page-heading > *, .section-heading > * { min-width: 0; }
 .page-heading .eyebrow { margin: 0 0 8px; }
-.mail-counts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0 0 28px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
-.mail-count { padding: 18px 22px; display: grid; gap: 4px; border-right: 1px solid var(--line); }
+.mail-counts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0 0 var(--space-6); border: 1px solid var(--line); border-radius: var(--surface-radius); background: var(--paper); }
+.mail-count { padding: 20px 24px; display: grid; gap: 4px; border-right: 1px solid var(--line); }
 .mail-count:last-child { border: 0; }
 .mail-count strong { font-size: 27px; font-weight: 600; line-height: 1.2; font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
 .mail-count span { font-size: 12px; color: var(--muted); }
-.filters { display: flex; align-items: end; flex-wrap: wrap; gap: 16px; padding: 18px 20px; margin: 0 0 24px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
+.filters { display: flex; align-items: end; flex-wrap: wrap; gap: 16px; padding: 20px 24px; margin: 0 0 24px; border: 1px solid var(--line); border-radius: var(--surface-radius); background: var(--paper); }
 .filters > label:first-child { flex: 1 1 240px; }
 .filters button { margin-top: 0; }
 .filters select { min-width: 150px; }
-.empty { padding: 44px 24px; text-align: center; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
+.empty { padding: 44px 24px; text-align: center; border: 1px solid var(--line); border-radius: var(--surface-radius); background: var(--paper); }
 .empty h2 { margin-bottom: 8px; }
 .empty p { margin: 0; }
 .mail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(275px, 100%), 1fr)); gap: 16px; }
-.mail-card { position: relative; min-width: 0; padding: 22px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
-.item-open { display: block; min-height: 24px; width: 100%; text-align: left; background: transparent; color: var(--ink); padding: 0; border: 0; font-size: 16px; line-height: 1.45; overflow-wrap: anywhere; font-weight: 550; }
-.mail-card p { overflow-wrap: anywhere; margin: 14px 0 0; }
+.mail-card { position: relative; min-width: 0; padding: 24px; border: 1px solid var(--line); border-radius: var(--surface-radius); background: var(--paper); }
+.item-open { display: block; min-height: 44px; width: 100%; text-align: left; background: transparent; color: var(--ink); padding: 0; border: 0; font-size: 16px; line-height: 1.45; overflow-wrap: anywhere; font-weight: 550; }
+.mail-card p { overflow-wrap: anywhere; margin: 12px 0 0; }
 .item-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 0; }
 .item-summary { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; font-size: 13px; color: var(--muted); }
 .date { font-size: 12px; line-height: 1.6; color: var(--muted); }
@@ -35,8 +36,8 @@ p { line-height: 1.6; }
 #login, #location-form { max-width: 600px; }
 #notice:empty { margin: 0; }
 #error { padding: 14px; border: 1px solid var(--warning); border-radius: 6px; color: var(--warning); }
-.settings-card { padding: 24px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); margin-bottom: 20px; }
-.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.settings-card { padding: 24px; border: 1px solid var(--line); border-radius: var(--surface-radius); background: var(--paper); margin-bottom: 20px; }
+.section-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
 .section-heading h2 { margin: 0; }
 .settings-card .sync-state { justify-content: flex-start; margin-top: 20px; }
 .settings-card > p:last-child { margin-bottom: 0; font-size: 13px; }
@@ -49,7 +50,7 @@ dialog { width: min(720px, calc(100% - 32px)); max-height: calc(100dvh - 32px); 
 .ocr { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.7 var(--mono); }
 .document-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
 .mail-card:hover { border-color: var(--control-border); }
-.item-open::after { content: ""; position: absolute; inset: 0; border-radius: 8px; }
+.item-open::after { content: ""; position: absolute; inset: 0; border-radius: var(--surface-radius); }
 .item-open:focus-visible { outline: none; }
 .item-open:focus-visible::after { outline: 2px solid var(--focus); outline-offset: 3px; }
 .unread .item-open { font-weight: 650; }
@@ -64,8 +65,8 @@ dialog { width: min(720px, calc(100% - 32px)); max-height: calc(100dvh - 32px); 
 .storage-note .storage-time { margin-top: 4px; font-size: 12px; }
 .storage-note.attention { border-color: var(--warning); background: var(--warning-soft); }
 @media (prefers-color-scheme: dark) { .wordmark img { filter: invert(1); } }
-@media (max-width: 600px) {
-  .page-heading { flex-direction: column; gap: 16px; }
+@media (max-width: 620px) {
+  .page-heading { flex-direction: column; align-items: flex-start; gap: 16px; }
   .sync-state { justify-content: flex-start; }
   .mail-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mail-count { padding: 16px; }
@@ -78,7 +79,7 @@ dialog { width: min(720px, calc(100% - 32px)); max-height: calc(100dvh - 32px); 
   .settings-card { padding: 20px; }
 }
 
-@media (min-width: 601px) and (max-width: 1000px) {
+@media (min-width: 621px) and (max-width: 1000px) {
   .filters > label:first-child { flex-basis: 100%; }
   .filters > button { margin-left: auto; }
 }
