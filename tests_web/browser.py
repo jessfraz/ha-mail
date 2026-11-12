@@ -17,6 +17,16 @@ from urllib.parse import urlsplit
 from playwright.sync_api import Browser, Page, Route, expect, sync_playwright
 
 
+def card_hover(page: Page) -> None:
+    """The whole card opens mail, while the title remains a text action."""
+    title = page.locator(".mail-card .item-open").first
+    title.hover()
+    expect(title).to_have_css("background-color", "rgba(0, 0, 0, 0)")
+    expect(title).to_have_css("background-image", "none")
+    expect(title).to_have_css("text-decoration-line", "underline")
+    page.mouse.move(0, 0)
+
+
 def exercise(page: Page, origin: str, *, native: bool, version: str) -> None:
     page.goto(origin)
     if native:
@@ -27,6 +37,7 @@ def exercise(page: Page, origin: str, *, native: bool, version: str) -> None:
     expect(page.locator(".mail-card")).to_have_count(1)
     expect(page.locator(".mail-card")).to_contain_text("<img src=x onerror=alert(1)>")
     expect(page.locator(".mail-card img")).to_have_count(0)
+    card_hover(page)
     envelopes: list[Route] = []
     page.route("**/v1/items/mail-a/envelope", lambda route: envelopes.append(route))
     with page.expect_request("**/v1/items/mail-a/envelope"):

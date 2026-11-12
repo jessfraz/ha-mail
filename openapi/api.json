@@ -554,7 +554,7 @@
   "info": {
     "description": "Location-bound physical mail snapshots, documents, and GET-only synchronization. Stable credentials remain server-side. Physical mail actions are not implemented.",
     "title": "Mail API",
-    "version": "0.1.7"
+    "version": "0.1.8"
   },
   "openapi": "3.0.3",
   "paths": {
