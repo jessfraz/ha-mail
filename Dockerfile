@@ -1,4 +1,4 @@
-FROM rust:1.99.1-alpine3.24 AS build
+FROM rust:1.100.0-alpine3.24 AS build
 RUN apk add --no-cache musl-dev pkgconfig cmake make g++
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
