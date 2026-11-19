@@ -264,12 +264,15 @@ impl Store {
             let clear_at = item
                 .clear_at
                 .as_deref()
-                .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-                .map(|t| t.timestamp())
+                .and_then(crate::timestamps::rfc3339_seconds)
                 .filter(|_| item.shred_status.as_deref() != Some("completed"));
             sqlx::query("INSERT INTO items (id, sender, scan_status, summary, archived, unread, clear_at, body, sort_at, first_seen_at, revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET sender = excluded.sender, scan_status = excluded.scan_status, summary = excluded.summary, archived = excluded.archived, unread = excluded.unread, clear_at = excluded.clear_at, body = excluded.body, sort_at = excluded.sort_at, revision = excluded.revision")
-                .bind(&item.id).bind(&item.sender).bind(&item.scan_status).bind(&item.summary).bind(item.archived_at.is_some()).bind(item.read_at.is_none()).bind(clear_at).bind(serde_json::to_string(&item)?).bind(item.received_at.as_deref().and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok()).map_or(item.first_seen_at, |at| at.timestamp())).bind(item.first_seen_at).bind(item.revision).execute(&mut *transaction).await?;
-            if initial && clear_at.is_some_and(|at| at <= chrono::Utc::now().timestamp() + 259200) {
+                .bind(&item.id).bind(&item.sender).bind(&item.scan_status).bind(&item.summary).bind(item.archived_at.is_some()).bind(item.read_at.is_none()).bind(clear_at).bind(serde_json::to_string(&item)?).bind(item.received_at.as_deref().and_then(crate::timestamps::rfc3339_seconds).unwrap_or(item.first_seen_at)).bind(item.first_seen_at).bind(item.revision).execute(&mut *transaction).await?;
+            if initial
+                && clear_at.is_some_and(|at| {
+                    at <= time::OffsetDateTime::now_utc().unix_timestamp() + 259200
+                })
+            {
                 events.push("storage_due");
             }
             for kind in events {

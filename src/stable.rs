@@ -138,7 +138,7 @@ impl ProviderItem {
         .into_iter()
         .flatten()
         {
-            if chrono::DateTime::parse_from_rfc3339(at).is_err() {
+            if crate::timestamps::rfc3339_seconds(at).is_none() {
                 return Err(ProviderError::new("invalid_provider_timestamp"));
             }
         }

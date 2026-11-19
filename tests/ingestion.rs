@@ -447,7 +447,11 @@ async fn archived_mail_keeps_its_deadline_until_provider_confirms_shredding() {
     .unwrap();
     let mut source = item("mail-a", "location-a", Some("completed"));
     source.archived_at = Some("2026-01-01T12:00:00Z".into());
-    source.clear_at = Some((chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339());
+    source.clear_at = Some(
+        (time::OffsetDateTime::now_utc() + std::time::Duration::from_secs(172800))
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap(),
+    );
     let first = source.snapshot(100).unwrap();
     store
         .ingest_page("location-a", &[first], true, None, true)
@@ -473,4 +477,212 @@ async fn archived_mail_keeps_its_deadline_until_provider_confirms_shredding() {
         store.item("mail-a").await.unwrap().shred_status.as_deref(),
         Some("completed")
     );
+}
+
+#[tokio::test]
+async fn provider_timestamps_preserve_validation_epoch_sorting_and_original_strings() {
+    // These are the existing provider contract, including its permissive leap
+    // seconds and Unicode minus offsets, not a broader ISO 8601 grammar.
+    let accepted: [(&str, i64); 16] = [
+        ("1969-12-31T23:59:59.999999999Z", -1),
+        ("1970-01-01T00:00:00Z", 0),
+        ("1970-01-01 00:00:00z", 0),
+        ("1970-01-01t01:00:00.1234+01:00", 0),
+        ("1969-12-31T23:00:00.9-01:00", 0),
+        ("1970-01-01T00:30:00+00:30", 0),
+        ("1969-12-31T23:30:00−00:30", 0),
+        ("1970-01-01T23:59:00+23:59", 0),
+        ("1969-12-31T00:01:00-23:59", 0),
+        ("1969-12-31T23:59:60.5Z", -1),
+        ("1970-01-01T00:00:60Z", 59),
+        ("1970-01-01T01:00:60.1234+01:00", 59),
+        ("2016-12-31T23:59:60Z", 1_483_228_799),
+        ("2000-02-29T12:34:56.1234567890123Z", 951_827_696),
+        ("0000-01-01T00:00:00+23:59", -62_167_305_540),
+        ("9999-12-31T23:59:59-23:59", 253_402_387_139),
+    ];
+    let rejected = [
+        "",
+        "2026-01-01",
+        "2026-01-01T12:00:00",
+        "2026-01-01T12:00:00Z ",
+        " 2026-01-01T12:00:00Z",
+        "2026-01-01_12:00:00Z",
+        "2026-01-01\t12:00:00Z",
+        "2026-01-01\n12:00:00Z",
+        "2026-01-01é12:00:00Z",
+        "2026-01-01T12:00:00.Z",
+        "2026-01-01T12:00:00,1Z",
+        "2026-01-01T24:00:00Z",
+        "2026-01-01T12:60:00Z",
+        "2026-01-01T12:00:61Z",
+        "2026-02-29T12:00:00Z",
+        "1900-02-29T12:00:00Z",
+        "2026-04-31T12:00:00Z",
+        "2026-00-01T12:00:00Z",
+        "2026-01-00T12:00:00Z",
+        "2026-01-01T12:00:00+24:00",
+        "2026-01-01T12:00:00+00:60",
+        "2026-01-01T12:00:00+0100",
+        "2026-01-01T12:00:00+01",
+        "2026-01-01T12:00:00+01:00:00",
+        "2026-01-01T12:00:00UTC",
+        "2026-01-01T12:00:00Zjunk",
+        "2026-1-01T12:00:00Z",
+        "+2026-01-01T12:00:00Z",
+        "10000-01-01T12:00:00Z",
+        "2026−01-01T12:00:00Z",
+    ];
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::open(
+        &directory.path().join("mail.sqlite3"),
+        Environment::Sandbox,
+        Some("location-a"),
+    )
+    .await
+    .unwrap();
+    let fixture = Fixture::new(vec![]);
+    let stable = Stable::with_origin("fixture-key", &fixture.origin).unwrap();
+    let mut expected = Vec::new();
+    for (index, (at, seconds)) in accepted.into_iter().enumerate() {
+        let id = format!("timestamp-{index:02}");
+        let mut source = item(&id, "location-a", None);
+        source.created_at = Some(at.into());
+        source.archived_at = Some(at.into());
+        source.read_at = Some(at.into());
+        source.clear_at = Some(at.into());
+        let snapshot = source.snapshot(100).unwrap();
+        assert_eq!(snapshot.received_at.as_deref(), Some(at));
+        assert_eq!(snapshot.archived_at.as_deref(), Some(at));
+        assert_eq!(snapshot.read_at.as_deref(), Some(at));
+        assert_eq!(snapshot.clear_at.as_deref(), Some(at));
+        source.archived_at = None;
+        source.read_at = None;
+        *fixture.items.lock().unwrap() = vec![source];
+        let before = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        sweep(&store, &stable).await.unwrap();
+        let stored = store.item(&id).await.unwrap();
+        let after = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        assert!((before..=after).contains(&u64::try_from(stored.observed_at).unwrap()));
+        assert_eq!(stored.first_seen_at, stored.observed_at);
+        assert_eq!(stored.received_at.as_deref(), Some(at));
+        assert_eq!(stored.clear_at.as_deref(), Some(at));
+        expected.push((seconds, id, at));
+    }
+    expected.sort_by(|a, b| b.cmp(a));
+    let mut page_token = None;
+    for (index, (seconds, id, at)) in expected.iter().enumerate() {
+        let page = store
+            .list(&ListQuery {
+                limit: Some(1),
+                page_token,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(&page.items[0].id, id);
+        assert_eq!(page.items[0].received_at.as_deref(), Some(*at));
+        let next = (index + 1 < expected.len()).then(|| format!("{seconds}:{id}"));
+        assert_eq!(page.next_page_token, next);
+        page_token = page.next_page_token;
+    }
+    for at in rejected {
+        for field in 0..4 {
+            let mut source = item("invalid-timestamp", "location-a", None);
+            let target = match field {
+                0 => &mut source.created_at,
+                1 => &mut source.archived_at,
+                2 => &mut source.read_at,
+                _ => &mut source.clear_at,
+            };
+            *target = Some(at.into());
+            *fixture.items.lock().unwrap() = vec![source];
+            let error = sweep(&store, &stable)
+                .await
+                .expect_err(&format!("{at:?}, field {field}"));
+            assert_eq!(
+                error.code, "invalid_provider_timestamp",
+                "{at:?}, field {field}"
+            );
+            // The real worker resets an interrupted archived sweep on failure.
+            store.failed(error.code).await.unwrap();
+            assert!(matches!(
+                store.item("invalid-timestamp").await,
+                Err(ha_mail::error::Error::NotFound)
+            ));
+        }
+    }
+    store.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn timestamp_storage_deadlines_keep_the_three_day_inclusive_boundary() {
+    use ha_mail::models::EventKind;
+    use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::open(
+        &directory.path().join("mail.sqlite3"),
+        Environment::Sandbox,
+        Some("location-a"),
+    )
+    .await
+    .unwrap();
+    // Complete initial ingestion so subsequent due notifications are visible.
+    store
+        .ingest_page("location-a", &[], true, None, true)
+        .await
+        .unwrap();
+    let now = OffsetDateTime::now_utc().unix_timestamp();
+    let mut snapshots = Vec::new();
+    for (id, delta) in [("before", -1), ("boundary", 0), ("after", 60)] {
+        let mut source = item(id, "location-a", None);
+        source.clear_at = Some(
+            OffsetDateTime::from_unix_timestamp(now + 259200 + delta)
+                .unwrap()
+                .format(&Rfc3339)
+                .unwrap(),
+        );
+        snapshots.push(source.snapshot(now).unwrap());
+    }
+    store
+        .ingest_page("location-a", &snapshots, true, None, true)
+        .await
+        .unwrap();
+    assert_eq!(store.summary().await.unwrap().storage_due, 2);
+    let mut due = store
+        .events(0, None)
+        .await
+        .unwrap()
+        .items
+        .into_iter()
+        .filter(|event| event.kind == EventKind::StorageDue)
+        .map(|event| event.item_id)
+        .collect::<Vec<_>>();
+    due.sort();
+    assert_eq!(due, ["before", "boundary"]);
+    // A repeated observation must not replay the same deadline notification.
+    store
+        .ingest_page("location-a", &snapshots, true, None, true)
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .events(0, None)
+            .await
+            .unwrap()
+            .items
+            .into_iter()
+            .filter(|event| event.kind == EventKind::StorageDue)
+            .count(),
+        2
+    );
+    store.close().await.unwrap();
 }

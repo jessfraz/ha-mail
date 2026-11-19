@@ -19,8 +19,10 @@ async fn main() -> anyhow::Result<()> {
         Some("example-location"),
     )
     .await?;
-    let now = chrono::Utc::now().timestamp();
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
     if std::env::var("MAIL_PREVIEW_SCENARIO").as_deref() != Ok("empty") {
+        let clear_at = (time::OffsetDateTime::now_utc() + std::time::Duration::from_secs(172800))
+            .format(&time::format_description::well_known::Rfc3339)?;
         let items = [
             (
                 "example-letter",
@@ -40,7 +42,7 @@ async fn main() -> anyhow::Result<()> {
             observed_at: now,
             archived_at: None,
             read_at: None,
-            clear_at: Some((chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339()),
+            clear_at: Some(clear_at.clone()),
             scan_status: status.into(),
             scan_notice: None,
             shred_status: None,

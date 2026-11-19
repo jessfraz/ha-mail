@@ -1,6 +1,6 @@
-use chrono::Utc;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 use tokio::sync::RwLock;
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, JsonSchema)]
@@ -46,9 +46,12 @@ pub struct Installation {
 impl Installation {
     pub async fn report(&self) -> InstallationReport {
         let presence = self.presence.read().await;
-        let connected = presence
-            .as_ref()
-            .is_some_and(|presence| Utc::now().timestamp().saturating_sub(presence.at) < 180);
+        let connected = presence.as_ref().is_some_and(|presence| {
+            OffsetDateTime::now_utc()
+                .unix_timestamp()
+                .saturating_sub(presence.at)
+                < 180
+        });
         InstallationReport {
             version: env!("CARGO_PKG_VERSION").into(),
             integration_connected: connected,
@@ -64,7 +67,10 @@ impl Installation {
     }
     pub async fn is_owner(&self, id: &str) -> bool {
         self.presence.read().await.as_ref().is_some_and(|presence| {
-            Utc::now().timestamp().saturating_sub(presence.at) < 180
+            OffsetDateTime::now_utc()
+                .unix_timestamp()
+                .saturating_sub(presence.at)
+                < 180
                 && presence.owner_id.as_deref() == Some(id)
         })
     }
@@ -78,12 +84,12 @@ impl Installation {
             || report
                 .backup
                 .last_backup
-                .is_some_and(|at| at < 0 || at > Utc::now().timestamp() + 60)
+                .is_some_and(|at| at < 0 || at > OffsetDateTime::now_utc().unix_timestamp() + 60)
         {
             return Err(crate::error::Error::Invalid("invalid integration report"));
         }
         *self.presence.write().await = Some(Presence {
-            at: Utc::now().timestamp(),
+            at: OffsetDateTime::now_utc().unix_timestamp(),
             backup: report.backup,
             owner_id: report.owner_id,
         });
@@ -94,7 +100,7 @@ impl Installation {
 #[cfg(test)]
 mod tests {
     use crate::installation::{BackupReport, Installation, Presence, PresenceReport};
-    use chrono::Utc;
+    use time::OffsetDateTime;
 
     #[tokio::test]
     async fn instruction_owner_expires_with_the_integration_presence_lease() {
@@ -111,7 +117,7 @@ mod tests {
         assert!(installation.is_owner("example-owner").await);
         assert!(!installation.is_owner("example-admin").await);
         *installation.presence.write().await = Some(Presence {
-            at: Utc::now().timestamp() - 180,
+            at: OffsetDateTime::now_utc().unix_timestamp() - 180,
             backup: BackupReport::default(),
             owner_id: Some("example-owner".into()),
         });
@@ -123,5 +129,61 @@ mod tests {
         .unwrap();
         installation.record(legacy).await.unwrap();
         assert!(!installation.is_owner("example-owner").await);
+    }
+
+    #[tokio::test]
+    async fn timestamp_backup_reports_keep_the_sixty_second_future_allowance() {
+        let installation = Installation::default();
+        for delta in [0, 60, 61] {
+            let mut checked = false;
+            // Retry only if the real clock crossed a second while recording;
+            // otherwise a valid +61 report could become +60 during the call.
+            for _ in 0..8 {
+                let now = OffsetDateTime::now_utc().unix_timestamp();
+                let result = installation
+                    .record(PresenceReport {
+                        version: env!("CARGO_PKG_VERSION").into(),
+                        backup: BackupReport {
+                            last_backup: Some(now + delta),
+                            ..Default::default()
+                        },
+                        owner_id: None,
+                    })
+                    .await;
+                if OffsetDateTime::now_utc().unix_timestamp() != now {
+                    continue;
+                }
+                if delta <= 60 {
+                    result.unwrap();
+                    assert_eq!(
+                        installation.report().await.backup.last_backup,
+                        Some(now + delta)
+                    );
+                } else {
+                    assert!(matches!(
+                        result,
+                        Err(crate::error::Error::Invalid("invalid integration report"))
+                    ));
+                }
+                checked = true;
+                break;
+            }
+            assert!(checked, "clock did not stay within one second");
+        }
+        for at in [-1, i64::MAX] {
+            assert!(
+                installation
+                    .record(PresenceReport {
+                        version: env!("CARGO_PKG_VERSION").into(),
+                        backup: BackupReport {
+                            last_backup: Some(at),
+                            ..Default::default()
+                        },
+                        owner_id: None,
+                    })
+                    .await
+                    .is_err()
+            );
+        }
     }
 }

@@ -45,7 +45,7 @@ pub async fn sweep(store: &Store, stable: &Stable) -> Result<(), SyncFailure> {
             }
             items.push(
                 edge.node
-                    .snapshot(chrono::Utc::now().timestamp())
+                    .snapshot(time::OffsetDateTime::now_utc().unix_timestamp())
                     .map_err(SyncFailure::from)?,
             );
         }
