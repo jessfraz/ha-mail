@@ -873,7 +873,6 @@ name = "ha-mail"
 version = "0.1.8"
 dependencies = [
  "anyhow",
- "chrono",
  "clap",
  "dropshot",
  "getrandom 0.4.3",
@@ -891,6 +890,7 @@ dependencies = [
  "subtle",
  "tempfile",
  "thiserror",
+ "time",
  "tokio",
  "uuid",
 ]
@@ -1794,7 +1794,6 @@ version = "0.8.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3fbf2ae1b8bc8e02df939598064d22402220cd5bbcca1c76f7d6a310974d5615"
 dependencies = [
- "chrono",
  "dyn-clone",
  "schemars_derive",
  "serde",

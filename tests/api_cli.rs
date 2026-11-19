@@ -357,3 +357,79 @@ async fn actual_cli_writes_owner_only_pdf_bytes_without_overwriting() {
     assert_eq!(std::fs::read(&path).unwrap(), pdf.as_bytes());
     assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
 }
+
+#[tokio::test]
+async fn timestamp_presence_reports_keep_backup_validation_and_http_errors() {
+    use ha_mail::installation::{BackupReport, InstallationReport, PresenceReport};
+
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::open(
+        &directory.path().join("mail.sqlite3"),
+        Environment::Sandbox,
+        Some("location-a"),
+    )
+    .await
+    .unwrap();
+    let fixture = Fixture::new(vec![]);
+    let context = api::Context::new(
+        store.clone(),
+        Stable::with_origin("fixture-key", &fixture.origin).unwrap(),
+        Environment::Sandbox,
+        &"test-owner".repeat(4),
+    )
+    .with_integration(&"test-integration".repeat(3));
+    let server = api::start("127.0.0.1:0".parse().unwrap(), Arc::new(context)).unwrap();
+    let origin = format!("http://{}", server.local_addr());
+    let http = reqwest::Client::new();
+    let now = i64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    )
+    .unwrap();
+    for at in [0, now + 60, -1, i64::MAX] {
+        let response = http
+            .post(format!("{origin}/v1/integration/presence"))
+            .bearer_auth("test-integration".repeat(3))
+            .json(&PresenceReport {
+                version: env!("CARGO_PKG_VERSION").into(),
+                backup: BackupReport {
+                    last_backup: Some(at),
+                    ..Default::default()
+                },
+                owner_id: Some("example-owner".into()),
+            })
+            .send()
+            .await
+            .unwrap();
+        if at >= 0 && at <= now + 60 {
+            assert_eq!(response.status(), 204);
+            let report: InstallationReport = http
+                .get(format!("{origin}/v1/installation"))
+                .bearer_auth("test-owner".repeat(4))
+                .send()
+                .await
+                .unwrap()
+                .error_for_status()
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            assert!(report.integration_connected);
+            assert_eq!(report.backup.last_backup, Some(at));
+        } else {
+            assert_eq!(response.status(), 400);
+            #[derive(serde::Deserialize)]
+            struct Failure {
+                error_code: String,
+                message: String,
+            }
+            let error: Failure = response.json().await.unwrap();
+            assert_eq!(error.error_code, "invalid_input");
+            assert_eq!(error.message, "invalid integration report");
+        }
+    }
+    server.close().await.unwrap();
+    store.close().await.unwrap();
+}

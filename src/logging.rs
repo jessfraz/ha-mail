@@ -23,10 +23,50 @@ struct Fields {
 }
 #[derive(Serialize)]
 struct Entry {
-    timestamp: chrono::DateTime<chrono::Utc>,
+    #[serde(serialize_with = "serialize_timestamp")]
+    timestamp: time::UtcDateTime,
     event: &'static str,
     #[serde(flatten)]
     fields: Fields,
+}
+// Keep the log wire format: UTC `Z`, with 0, 3, 6 or 9 fractional digits.
+// time's built-in RFC3339 formatter instead trims individual trailing zeros.
+fn serialize_timestamp<S: serde::Serializer>(
+    timestamp: &time::UtcDateTime,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    struct Timestamp<'a>(&'a time::UtcDateTime);
+    impl fmt::Display for Timestamp<'_> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let at = self.0;
+            let year = at.year();
+            if (0..=9999).contains(&year) {
+                write!(f, "{year:04}")?;
+            } else {
+                write!(f, "{year:+05}")?;
+            }
+            write!(
+                f,
+                "-{:02}-{:02}T{:02}:{:02}:{:02}",
+                u8::from(at.month()),
+                at.day(),
+                at.hour(),
+                at.minute(),
+                at.second()
+            )?;
+            let nanos = at.nanosecond();
+            if nanos == 0 {
+            } else if nanos.is_multiple_of(1_000_000) {
+                write!(f, ".{:03}", nanos / 1_000_000)?;
+            } else if nanos.is_multiple_of(1_000) {
+                write!(f, ".{:06}", nanos / 1_000)?;
+            } else {
+                write!(f, ".{nanos:09}")?;
+            }
+            f.write_str("Z")
+        }
+    }
+    serializer.collect_str(&Timestamp(timestamp))
 }
 impl<W: Write + Send> Drain for SafeLog<W> {
     type Ok = ();
@@ -47,7 +87,7 @@ impl<W: Write + Send> Drain for SafeLog<W> {
             return Ok(());
         }
         if let Ok(mut line) = serde_json::to_vec(&Entry {
-            timestamp: chrono::Utc::now(),
+            timestamp: time::UtcDateTime::now(),
             event,
             fields,
         }) {
@@ -83,5 +123,38 @@ impl slog::Serializer for Fields {
             _ => {}
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::logging::{Entry, Fields};
+
+    #[test]
+    fn log_timestamps_keep_utc_and_grouped_fractional_precision() {
+        for (nanoseconds, expected) in [
+            (0, "1969-12-31T23:59:59Z"),
+            (100_000_000, "1969-12-31T23:59:59.100Z"),
+            (120_000_000, "1969-12-31T23:59:59.120Z"),
+            (123_000_000, "1969-12-31T23:59:59.123Z"),
+            (123_400_000, "1969-12-31T23:59:59.123400Z"),
+            (123_456_000, "1969-12-31T23:59:59.123456Z"),
+            (123_456_700, "1969-12-31T23:59:59.123456700Z"),
+            (123_456_789, "1969-12-31T23:59:59.123456789Z"),
+            (1, "1969-12-31T23:59:59.000000001Z"),
+        ] {
+            let entry = Entry {
+                timestamp: time::UtcDateTime::from_unix_timestamp(-1)
+                    .unwrap()
+                    .replace_nanosecond(nanoseconds)
+                    .unwrap(),
+                event: "server_started",
+                fields: Fields::default(),
+            };
+            assert_eq!(
+                serde_json::to_string(&entry).unwrap(),
+                format!(r#"{{"timestamp":"{expected}","event":"server_started"}}"#)
+            );
+        }
     }
 }
